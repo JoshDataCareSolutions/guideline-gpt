@@ -16,6 +16,8 @@ from guideline_gpt.generation.answer import parse_citations
 from guideline_gpt.generation.llm_client import LLMClient, get_llm_client
 from guideline_gpt.generation.prompts import SYSTEM_PROMPT, build_user_prompt
 from guideline_gpt.logging_setup import get_logger
+from guideline_gpt.retrieval.bm25 import BM25Retriever
+from guideline_gpt.retrieval.hybrid import fuse
 from guideline_gpt.retrieval.vector import VectorRetriever
 from guideline_gpt.types import Chunk, QueryResponse, QueryTrace, RetrievalHit
 
@@ -53,25 +55,54 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 class QueryPipeline:
     """Orchestrates retrieval and generation, producing a cited answer + trace."""
 
-    def __init__(self, settings: Settings, *, llm_client: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        llm_client: LLMClient | None = None,
+        vector: VectorRetriever | None = None,
+        bm25: BM25Retriever | None = None,
+    ) -> None:
         self._settings = settings
-        self._vector = VectorRetriever(settings)
+        self._vector = vector or VectorRetriever(settings)
+        self._bm25 = bm25 or BM25Retriever(settings)
         self._llm = llm_client or get_llm_client(settings)
 
     def _retrieve(self, query: str, trace: QueryTrace) -> list[RetrievalHit]:
         """Run retrieval and return the hits whose chunks are sent to the LLM.
 
-        Records each stage on the trace. At M2 this is vector-only; the top
-        ``rerank_top_k`` vector hits become the LLM context.
+        Records each stage on the trace. At M3 retrieval is hybrid: vector and
+        BM25 results are fused with RRF; the top ``rerank_top_k`` fused hits
+        become the LLM context. (M4 will reorder them with a cross-encoder.)
         """
+        top_k = self._settings.retrieval_top_k
+        vector_hits: list[RetrievalHit] = []
+        bm25_hits: list[RetrievalHit] = []
+
         try:
-            vector_hits = self._vector.search(query, self._settings.retrieval_top_k)
+            vector_hits = self._vector.search(query, top_k)
             trace.vector_hits = vector_hits
         except Exception as exc:  # noqa: BLE001 - record and continue per trace contract
             log.warning("vector_search_failed", error=str(exc))
             trace.stage_errors["vector"] = str(exc)
-            return []
-        return vector_hits[: self._settings.rerank_top_k]
+
+        try:
+            bm25_hits = self._bm25.search(query, top_k)
+            trace.bm25_hits = bm25_hits
+        except Exception as exc:  # noqa: BLE001 - record and continue per trace contract
+            log.warning("bm25_search_failed", error=str(exc))
+            trace.stage_errors["bm25"] = str(exc)
+
+        try:
+            fused = fuse(vector_hits, bm25_hits, top_k)
+            trace.fused_hits = fused
+        except Exception as exc:  # noqa: BLE001 - record and continue per trace contract
+            log.warning("fusion_failed", error=str(exc))
+            trace.stage_errors["fusion"] = str(exc)
+            # Fall back to whichever lane returned something.
+            fused = vector_hits or bm25_hits
+
+        return fused[: self._settings.rerank_top_k]
 
     def _generate(self, query: str, chunks: list[Chunk], trace: QueryTrace) -> None:
         """Assemble the prompt, call the LLM, and populate the trace."""

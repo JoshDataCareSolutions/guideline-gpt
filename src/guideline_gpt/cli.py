@@ -73,6 +73,10 @@ def serve(
             str(app_path),
             "--server.port",
             str(port),
+            # Skip the interactive first-run prompt and usage-stats opt-in so
+            # `serve` works in non-interactive environments (Docker, CI).
+            "--browser.gatherUsageStats",
+            "false",
         ],
         check=True,
     )
