@@ -1,0 +1,52 @@
+# Environments
+.env
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# AI coding tool artifacts
+.cursor/
+.cursorrules
+.cursorignore
+.aider*
+.continue/
+.github/copilot-instructions.md
+.claude/
+CLAUDE.md
+.windsurf/
+.codeium/
+.tabnine/
+
+# Project artifacts
+chroma_db/
+documents/*.pdf
+!documents/README.md
+*.log
+.streamlit/secrets.toml
+
+# OS
+Thumbs.db
+.DS_Store
+
+spec.md

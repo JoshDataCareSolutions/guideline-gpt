@@ -1,0 +1,34 @@
+# Version control / project meta
+.git/
+.github/
+*.md
+!README.md
+
+# Python caches & build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets & local data (mounted at runtime instead)
+.env
+chroma_db/
+documents/*.pdf
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

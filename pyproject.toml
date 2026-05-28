@@ -1,0 +1,125 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "guideline-gpt"
+version = "0.1.0"
+description = "A production-pattern RAG system for querying domain-specific guideline corpora, with a pipeline inspector UI."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Joshua Quigley" }]
+requires-python = ">=3.11"
+keywords = ["rag", "retrieval-augmented-generation", "llm", "chromadb", "streamlit"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    # RAG orchestration + integrations
+    "llama-index-core>=0.11",
+    "llama-index-embeddings-openai>=0.2",
+    "llama-index-vector-stores-chroma>=0.2",
+    # Vector store
+    "chromadb>=0.5",
+    # LLM / embedding providers
+    "openai>=1.40",
+    "anthropic>=0.34",
+    # Retrieval
+    "rank-bm25>=0.2.2",
+    "sentence-transformers>=3.0",
+    # PDF parsing
+    "pypdf>=4.3",
+    "pymupdf>=1.24",
+    # Tokenization
+    "tiktoken>=0.7",
+    # UI / CLI / config / logging
+    "streamlit>=1.38",
+    "typer>=0.12",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.urls]
+Homepage = "https://github.com/joshquigley/guideline-gpt"
+Repository = "https://github.com/joshquigley/guideline-gpt"
+
+[project.scripts]
+guideline-gpt = "guideline_gpt.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/guideline_gpt"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I isort, UP pyupgrade, B bugbear,
+# C4 comprehensions, SIM simplify, D pydocstyle (Google), ANN annotations
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "D", "ANN"]
+ignore = [
+    "D107",   # missing docstring in __init__ (documented at class level)
+    "D203",   # one-blank-line-before-class (conflicts with D211)
+    "D213",   # multi-line-summary-second-line (conflicts with D212)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN"]      # tests need not be docstring/annotation-strict
+"scripts/**" = ["D", "ANN"]
+"src/guideline_gpt/ui/**" = ["ANN"]  # Streamlit callbacks are awkward to annotate
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+# Third-party libs that ship without (complete) type stubs.
+module = [
+    "chromadb.*",
+    "rank_bm25.*",
+    "sentence_transformers.*",
+    "llama_index.*",
+    "fitz",
+    "pypdf.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["guideline_gpt"]
+omit = ["*/ui/*"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "\\.\\.\\."]
