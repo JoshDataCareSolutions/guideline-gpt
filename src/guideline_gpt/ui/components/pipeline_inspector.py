@@ -61,14 +61,15 @@ def render_inspector(trace: QueryTrace, *, show_timing: bool = False) -> None:
         with fused_tab:
             render_hits_table(trace.fused_hits, score_label="rrf")
 
-    # Stage 3 — Rerank (the chunks actually sent to the LLM)
-    with st.expander(f"3. Rerank — top {len(trace.reranked_hits)} sent to LLM", expanded=False):
+    # Stage 3 — Rerank (the chunks actually sent to the LLM) — expanded: this is
+    # the most informative single view of why the answer is what it is.
+    with st.expander(f"3. Rerank — top {len(trace.reranked_hits)} sent to LLM", expanded=True):
         render_reranked_rows(trace.reranked_hits)
 
-    # Stage 4 — Prompt
+    # Stage 4 — Prompt (verbose; collapsed)
     with st.expander("4. Prompt sent to LLM", expanded=False):
         render_prompt(trace)
 
-    # Stage 5 — LLM response
-    with st.expander("5. LLM response", expanded=False):
+    # Stage 5 — LLM response (expanded for the metric tiles)
+    with st.expander("5. LLM response", expanded=True):
         render_llm_metrics(trace, show_timing=show_timing)

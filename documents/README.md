@@ -20,7 +20,7 @@ python scripts/download_corpus.py
 
 ---
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This project is **not a medical device** and is **not for clinical
 decision-making**. It operates only on public documents and performs no PHI

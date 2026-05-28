@@ -12,7 +12,7 @@ The default showcase corpus is public clinical guidelines (respiratory and
 critical care), but the system is **corpus-agnostic**: drop your own PDFs into
 `documents/`, rebuild the index, and query your domain.
 
-> ⚠️ **Not a medical device.** This project is for education and engineering
+> **Not a medical device.** This project is for education and engineering
 > demonstration only — not for clinical decision-making. Public documents only;
 > no PHI handling. See the disclaimer below.
 
@@ -111,7 +111,7 @@ alternative vector stores (Azure AI Search, pgvector) · async pipeline.
 
 [MIT](LICENSE) © 2026 Joshua Quigley
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This software is provided for educational and demonstration purposes only. It is
 **not a medical device**, is **not intended for clinical decision-making**, and

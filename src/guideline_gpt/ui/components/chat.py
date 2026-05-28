@@ -1,4 +1,9 @@
-"""Chat-message rendering with clickable [n] citation anchors."""
+"""Chat-message rendering: bordered Q&A blocks with clickable [n] citations.
+
+We deliberately do NOT use ``st.chat_message`` — its avatar slot can't be
+suppressed and a robot/person icon reads as generic chatbot UI. A bordered
+container with a small role label looks more like a research notebook.
+"""
 
 from __future__ import annotations
 
@@ -30,22 +35,34 @@ def _link_citations(text: str) -> str:
     )
 
 
+def render_user_message(content: str) -> None:
+    """Render a user question as a bordered, captioned block."""
+    with st.container(border=True):
+        st.caption("Question")
+        st.markdown(content)
+
+
+def render_assistant_message(content: str, citations: list[Chunk] | None = None) -> None:
+    """Render an assistant answer with linkified citations and a sources expander."""
+    with st.container(border=True):
+        st.caption("Answer")
+        st.markdown(_link_citations(content), unsafe_allow_html=True)
+        if citations:
+            with st.expander(f"Sources ({len(citations)})", expanded=False):
+                for index, chunk in enumerate(citations, start=1):
+                    meta = chunk.metadata
+                    st.markdown(f"**[{index}] {meta.source_name}.pdf — p. {meta.page_number}**")
+                    st.caption(chunk.text)
+
+
 def render_message(message: ChatMessage) -> None:
-    """Render a single chat message, linkifying citation markers for the assistant."""
+    """Render a single chat message by role."""
     role = message.get("role", "assistant")
     content = message.get("content", "")
-    with st.chat_message(role):
-        if role == "assistant":
-            st.markdown(_link_citations(content), unsafe_allow_html=True)
-            cited = message.get("citations") or []
-            if cited:
-                with st.expander(f"Sources ({len(cited)})", expanded=False):
-                    for index, chunk in enumerate(cited, start=1):
-                        meta = chunk.metadata
-                        st.markdown(f"**[{index}] {meta.source_name}.pdf — p. {meta.page_number}**")
-                        st.caption(chunk.text)
-        else:
-            st.markdown(content)
+    if role == "user":
+        render_user_message(content)
+    else:
+        render_assistant_message(content, message.get("citations"))
 
 
 def render_history(messages: list[ChatMessage]) -> None:

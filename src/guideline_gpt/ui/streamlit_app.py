@@ -24,7 +24,12 @@ from guideline_gpt.pipeline import QueryPipeline
 from guideline_gpt.retrieval.bm25 import BM25Retriever
 from guideline_gpt.retrieval.rerank import CrossEncoderReranker
 from guideline_gpt.retrieval.vector import VectorRetriever
-from guideline_gpt.ui.components.chat import ChatMessage, render_history, render_message
+from guideline_gpt.ui.components.chat import (
+    ChatMessage,
+    render_assistant_message,
+    render_history,
+    render_user_message,
+)
 from guideline_gpt.ui.components.pipeline_inspector import (
     render_empty_state,
     render_inspector,
@@ -98,12 +103,12 @@ def _build_pipeline(settings: Settings) -> QueryPipeline:
 # ------------------------------- sidebar -----------------------------------
 
 
-def _render_sidebar(settings: Settings) -> None:
+def _render_sidebar() -> None:
+    """Sidebar holds only the runtime knobs. Document management lives up top."""
     with st.sidebar:
-        st.header("Settings")
-        st.caption("Changes apply to the **next** query, not past ones.")
+        st.subheader("Settings")
+        st.caption("Changes apply to the **next** query.")
 
-        st.subheader("LLM")
         st.radio(
             "Provider",
             options=["anthropic", "openai"],
@@ -115,51 +120,53 @@ def _render_sidebar(settings: Settings) -> None:
         else:
             st.text_input("Model", key="openai_model")
 
-        st.subheader("Retrieval")
         st.slider("retrieval_top_k", 5, 50, key="retrieval_top_k")
         st.slider("rerank_top_k", 1, 15, key="rerank_top_k")
         st.toggle("Show timing breakdown", key="show_timing")
 
         if st.button("Clear chat", use_container_width=True):
             st.session_state.messages = []
+            st.session_state.pop("latest_trace", None)
             st.rerun()
 
-        st.divider()
-        st.subheader("Documents")
-        _render_uploader(settings)
 
-
-def _render_uploader(settings: Settings) -> None:
-    uploaded = st.file_uploader(
-        "Add PDFs",
-        type="pdf",
-        accept_multiple_files=True,
-        label_visibility="collapsed",
-    )
-    if uploaded:
-        settings.documents_dir.mkdir(parents=True, exist_ok=True)
-        for upload in uploaded:
-            dest = settings.documents_dir / upload.name
-            dest.write_bytes(upload.getbuffer())
-        st.success(f"Saved {len(uploaded)} file(s) to `{settings.documents_dir}/`.")
-
+def _render_documents_bar(settings: Settings) -> None:
+    """Compact corpus-management strip at the top of the main area."""
     docs = sorted(settings.documents_dir.glob("*.pdf")) if settings.documents_dir.exists() else []
-    st.caption(f"Indexed-ready PDFs in folder: **{len(docs)}**")
-
-    if st.button("Re-ingest documents", use_container_width=True, disabled=not docs):
-        with st.spinner("Embedding and indexing…"):
-            try:
-                report = run_ingest(settings.documents_dir, settings)
-            except Exception as exc:  # noqa: BLE001 - surface the failure to the user
-                st.error(f"Ingest failed: {exc}")
-                return
-        # New corpus -> drop cached retrievers + pipeline so the next query loads fresh.
-        _get_components.clear()
-        st.success(
-            f"Ingested {report.files} file(s), {report.pages} page(s) → "
-            f"{report.chunks:,} chunks ({report.total_tokens:,} tokens) "
-            f"in {report.elapsed_seconds}s."
+    label = f"Corpus — {len(docs)} PDF(s) indexed-ready"
+    with st.expander(label, expanded=False):
+        uploaded = st.file_uploader(
+            "Upload PDFs",
+            type="pdf",
+            accept_multiple_files=True,
+            label_visibility="collapsed",
         )
+        if uploaded:
+            settings.documents_dir.mkdir(parents=True, exist_ok=True)
+            for upload in uploaded:
+                dest = settings.documents_dir / upload.name
+                dest.write_bytes(upload.getbuffer())
+            st.success(f"Saved {len(uploaded)} file(s) to `{settings.documents_dir}/`.")
+
+        cols = st.columns([4, 1])
+        with cols[0]:
+            if docs:
+                st.caption(" · ".join(p.name for p in docs[:6]) + (" …" if len(docs) > 6 else ""))
+            else:
+                st.caption("No PDFs yet — upload some above, or drop them into `documents/`.")
+        with cols[1]:
+            if st.button("Re-ingest", use_container_width=True, disabled=not docs):
+                with st.spinner("Embedding and indexing…"):
+                    try:
+                        report = run_ingest(settings.documents_dir, settings)
+                    except Exception as exc:  # noqa: BLE001 - surface failure to the user
+                        st.error(f"Ingest failed: {exc}")
+                        return
+                _get_components.clear()
+                st.success(
+                    f"{report.files} file(s), {report.pages} page(s) → "
+                    f"{report.chunks:,} chunks in {report.elapsed_seconds}s."
+                )
 
 
 # ------------------------------- query flow --------------------------------
@@ -173,9 +180,9 @@ def _set_pending(prompt: str) -> None:
 def _process_prompt(prompt: str, settings: Settings) -> ChatMessage | None:
     user_message: ChatMessage = {"role": "user", "content": prompt}
     st.session_state.messages.append(user_message)
-    render_message(user_message)
+    render_user_message(prompt)
 
-    with st.chat_message("assistant"), st.spinner("Retrieving and generating…"):
+    with st.spinner("Retrieving and generating…"):
         try:
             pipeline = _build_pipeline(settings)
             response = pipeline.query(prompt)
@@ -183,35 +190,37 @@ def _process_prompt(prompt: str, settings: Settings) -> ChatMessage | None:
             st.error(f"Query failed: {exc}")
             return None
 
-        assistant: ChatMessage = {
-            "role": "assistant",
-            "content": response.answer or "_No answer was generated._",
-            "citations": list(response.citations),
-        }
-        st.session_state.messages.append(assistant)
-        st.session_state["latest_trace"] = response.trace
-        render_message(assistant)
-        return assistant
+    assistant: ChatMessage = {
+        "role": "assistant",
+        "content": response.answer or "_No answer was generated._",
+        "citations": list(response.citations),
+    }
+    st.session_state.messages.append(assistant)
+    st.session_state["latest_trace"] = response.trace
+    render_assistant_message(assistant["content"], list(response.citations))
+    return assistant
 
 
 # --------------------------------- main ------------------------------------
 
 
 def main() -> None:
-    st.set_page_config(page_title="guideline-gpt", layout="wide", page_icon="📚")
+    st.set_page_config(page_title="guideline-gpt", layout="wide")
     _init_state()
     configure_logging(get_settings().log_level)
     settings = _current_settings()
 
-    _render_sidebar(settings)
+    _render_sidebar()
 
     st.title("guideline-gpt")
     st.caption(
-        "⚠️ Educational demo only — not a medical device and not for clinical "
+        "Educational demo only — not a medical device, not for clinical "
         "decision-making. Public documents only."
     )
 
-    chat_col, inspector_col = st.columns([3, 2], gap="large")
+    _render_documents_bar(settings)
+
+    chat_col, inspector_col = st.columns([3, 2], gap="medium")
 
     # Resolve a pending example-button prompt before rendering history so the
     # new message lands at the bottom of the chat column in order.
