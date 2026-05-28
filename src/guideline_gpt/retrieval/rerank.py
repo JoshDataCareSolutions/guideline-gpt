@@ -33,9 +33,7 @@ class CrossEncoderReranker:
             model = CrossEncoder(settings.rerank_model)
         self._model = model
 
-    def rerank(
-        self, query: str, hits: list[RetrievalHit], top_k: int
-    ) -> list[RetrievalHit]:
+    def rerank(self, query: str, hits: list[RetrievalHit], top_k: int) -> list[RetrievalHit]:
         """Rescore ``hits`` jointly against ``query`` and keep the top ``top_k``.
 
         Args:
@@ -50,7 +48,10 @@ class CrossEncoderReranker:
         if not hits:
             return []
         pairs = [(query, hit.chunk.text) for hit in hits]
-        scores = self._model.predict(pairs)
+        # sentence-transformers' CrossEncoder.predict accepts list[tuple[str, str]]
+        # at runtime, but its type signature is a large union covering image/audio
+        # variants that mypy can't narrow through list invariance.
+        scores = self._model.predict(pairs)  # type: ignore[arg-type]
         ranked = sorted(zip(hits, scores, strict=True), key=lambda pair: pair[1], reverse=True)
         return [
             RetrievalHit(chunk=hit.chunk, score=float(score), source="rerank", rank=rank)
