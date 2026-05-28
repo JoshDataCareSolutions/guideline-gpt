@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import chromadb
-from chromadb.api.types import Metadata
+from chromadb.api.types import Documents, EmbeddingFunction, Metadata
 from chromadb.utils import embedding_functions
 
 from guideline_gpt.config import Settings
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from chromadb.api.models.Collection import Collection
 
 
-def _embedding_function(settings: Settings) -> embedding_functions.EmbeddingFunction:
+def _embedding_function(settings: Settings) -> EmbeddingFunction[Documents]:
     """Build the OpenAI embedding function from settings.
 
     Raises:
@@ -42,7 +42,9 @@ def get_collection(settings: Settings) -> Collection:
     client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
     return client.get_or_create_collection(
         name=settings.collection_name,
-        embedding_function=_embedding_function(settings),
+        # chromadb's EmbeddingFunction generic is invariant: OpenAIEmbeddingFunction
+        # is typed over list[str] but the API signature wants the broader Embeddable.
+        embedding_function=_embedding_function(settings),  # type: ignore[arg-type]
         metadata={"hnsw:space": "cosine"},
     )
 

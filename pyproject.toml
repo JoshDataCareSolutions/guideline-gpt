@@ -85,7 +85,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D", "ANN"]      # tests need not be docstring/annotation-strict
 "scripts/**" = ["D", "ANN"]
-"src/guideline_gpt/ui/**" = ["ANN"]  # Streamlit callbacks are awkward to annotate
+"src/guideline_gpt/ui/**" = ["ANN", "D"]  # Streamlit scripts: skip annotation/docstring rules
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
