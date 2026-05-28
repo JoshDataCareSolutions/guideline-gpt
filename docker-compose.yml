@@ -1,0 +1,25 @@
+# One-command local run: `docker compose up --build`
+#
+# Mounts the corpus and the persistent vector store as bind volumes so that
+# ingest results survive container restarts, and so you can drop new PDFs into
+# `documents/` from the host without rebuilding.
+
+services:
+  guideline-gpt:
+    build: .
+    image: guideline-gpt:latest
+    container_name: guideline-gpt
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./documents:/app/documents
+      - ./chroma_db:/app/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
