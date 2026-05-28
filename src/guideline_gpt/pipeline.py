@@ -18,6 +18,7 @@ from guideline_gpt.generation.prompts import SYSTEM_PROMPT, build_user_prompt
 from guideline_gpt.logging_setup import get_logger
 from guideline_gpt.retrieval.bm25 import BM25Retriever
 from guideline_gpt.retrieval.hybrid import fuse
+from guideline_gpt.retrieval.rerank import CrossEncoderReranker
 from guideline_gpt.retrieval.vector import VectorRetriever
 from guideline_gpt.types import Chunk, QueryResponse, QueryTrace, RetrievalHit
 
@@ -62,47 +63,58 @@ class QueryPipeline:
         llm_client: LLMClient | None = None,
         vector: VectorRetriever | None = None,
         bm25: BM25Retriever | None = None,
+        reranker: CrossEncoderReranker | None = None,
     ) -> None:
         self._settings = settings
         self._vector = vector or VectorRetriever(settings)
         self._bm25 = bm25 or BM25Retriever(settings)
+        self._reranker = reranker or CrossEncoderReranker(settings)
         self._llm = llm_client or get_llm_client(settings)
 
     def _retrieve(self, query: str, trace: QueryTrace) -> list[RetrievalHit]:
         """Run retrieval and return the hits whose chunks are sent to the LLM.
 
-        Records each stage on the trace. At M3 retrieval is hybrid: vector and
-        BM25 results are fused with RRF; the top ``rerank_top_k`` fused hits
-        become the LLM context. (M4 will reorder them with a cross-encoder.)
+        Pipeline: vector + BM25 -> RRF fusion -> cross-encoder rerank. Each
+        stage's output is recorded on the trace; a stage failure is logged but
+        does not abort the query (see "the trace is sacred").
         """
-        top_k = self._settings.retrieval_top_k
+        retrieval_k = self._settings.retrieval_top_k
+        rerank_k = self._settings.rerank_top_k
         vector_hits: list[RetrievalHit] = []
         bm25_hits: list[RetrievalHit] = []
 
         try:
-            vector_hits = self._vector.search(query, top_k)
+            vector_hits = self._vector.search(query, retrieval_k)
             trace.vector_hits = vector_hits
         except Exception as exc:  # noqa: BLE001 - record and continue per trace contract
             log.warning("vector_search_failed", error=str(exc))
             trace.stage_errors["vector"] = str(exc)
 
         try:
-            bm25_hits = self._bm25.search(query, top_k)
+            bm25_hits = self._bm25.search(query, retrieval_k)
             trace.bm25_hits = bm25_hits
         except Exception as exc:  # noqa: BLE001 - record and continue per trace contract
             log.warning("bm25_search_failed", error=str(exc))
             trace.stage_errors["bm25"] = str(exc)
 
         try:
-            fused = fuse(vector_hits, bm25_hits, top_k)
+            fused = fuse(vector_hits, bm25_hits, retrieval_k)
             trace.fused_hits = fused
         except Exception as exc:  # noqa: BLE001 - record and continue per trace contract
             log.warning("fusion_failed", error=str(exc))
             trace.stage_errors["fusion"] = str(exc)
-            # Fall back to whichever lane returned something.
             fused = vector_hits or bm25_hits
 
-        return fused[: self._settings.rerank_top_k]
+        try:
+            reranked = self._reranker.rerank(query, fused, rerank_k)
+            trace.reranked_hits = reranked
+        except Exception as exc:  # noqa: BLE001 - record and continue per trace contract
+            log.warning("rerank_failed", error=str(exc))
+            trace.stage_errors["rerank"] = str(exc)
+            # Fall back to the top fused hits so the LLM still gets context.
+            return fused[:rerank_k]
+
+        return reranked
 
     def _generate(self, query: str, chunks: list[Chunk], trace: QueryTrace) -> None:
         """Assemble the prompt, call the LLM, and populate the trace."""
