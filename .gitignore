@@ -40,7 +40,9 @@ CLAUDE.md
 
 # Project artifacts
 chroma_db/
-documents/*.pdf
+# Ignore everything dropped into the corpus folder (PDFs, stray downloads,
+# installers) but keep its README. Documents are not committed.
+documents/*
 !documents/README.md
 *.log
 .streamlit/secrets.toml

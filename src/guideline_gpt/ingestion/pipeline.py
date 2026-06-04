@@ -1,8 +1,9 @@
 """Ingestion orchestrator: PDFs -> chunks -> ChromaDB + BM25 index.
 
-Re-running on an unchanged corpus is idempotent: chunk ids are deterministic, so
-the Chroma collection is upserted (not duplicated) and the BM25 index is rebuilt
-over the current corpus.
+Re-running is idempotent: chunk ids are deterministic, so the Chroma collection
+is upserted (not duplicated). Chunks whose source document was removed or edited
+are pruned from the collection before upsert, so the vector store stays in sync
+with the freshly rebuilt BM25 index rather than drifting.
 """
 
 from __future__ import annotations
@@ -28,9 +29,24 @@ class IngestionError(RuntimeError):
     """Raised when ingestion produces no usable chunks."""
 
 
-def _upsert_chunks(settings: Settings, chunks: list[Chunk]) -> None:
-    """Embed and upsert chunks into the Chroma collection, in batches."""
+def _sync_chunks(settings: Settings, chunks: list[Chunk]) -> None:
+    """Reconcile the Chroma collection with the current corpus, then upsert.
+
+    Chroma ``upsert`` adds and updates but never removes, so a chunk whose source
+    PDF was deleted (or edited) would linger in the vector store and drift from
+    the freshly rebuilt BM25 index. We first delete any stored id that is no
+    longer in the current chunk set, keeping the two stores consistent and
+    re-ingestion truly idempotent.
+    """
     collection = get_collection(settings)
+
+    current_ids = {chunk.chunk_id for chunk in chunks}
+    existing_ids = set(collection.get(include=[])["ids"])
+    orphaned = list(existing_ids - current_ids)
+    if orphaned:
+        collection.delete(ids=orphaned)
+        log.info("pruned_orphans", count=len(orphaned))
+
     for start in range(0, len(chunks), _UPSERT_BATCH):
         batch = chunks[start : start + _UPSERT_BATCH]
         ids: list[str] = []
@@ -68,7 +84,7 @@ def ingest(documents_dir: Path, settings: Settings) -> IngestionReport:
             f"No chunks produced from {documents_dir}. Are there readable PDFs there?"
         )
 
-    _upsert_chunks(settings, chunks)
+    _sync_chunks(settings, chunks)
 
     bm25, chunk_ids = build_bm25(chunks)
     save_bm25(settings.bm25_path, bm25, chunk_ids)
