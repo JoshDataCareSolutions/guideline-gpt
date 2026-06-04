@@ -22,7 +22,13 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
+# Reranking runs on CPU only, so install the CPU build of torch first to avoid
+# pulling ~2GB of unused NVIDIA CUDA wheels. The second `uv pip install` sees
+# torch already satisfied and resolves the rest around it.
 RUN uv venv /app/.venv \
+ && uv pip install --python /app/.venv/bin/python \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch \
  && uv pip install --python /app/.venv/bin/python -e .
 
 # ---------- runtime ----------------------------------------------------------
