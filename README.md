@@ -12,7 +12,7 @@ UI** that exposes *how the system works* at every stage, not just a chat box.
 
 The default showcase corpus is public clinical guidelines (respiratory and
 critical care), but the system is **corpus-agnostic**: drop your own PDFs into
-`documents/`, rebuild the index, and query your own domain.
+`documents/`, rebuild the index, and query your own domain. 
 
 > **Not a medical device.** This project is for education and engineering
 > demonstration only — not for clinical decision-making. It processes only
