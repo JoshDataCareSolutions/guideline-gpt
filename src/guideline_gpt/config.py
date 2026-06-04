@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # --- Reranker ---------------------------------------------------------
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
+    # --- Ingestion cleaning -----------------------------------------------
+    # A line repeated on at least this fraction of a document's pages is treated
+    # as a running header/footer (e.g. copyright notices) and stripped before
+    # chunking. Set to 1.0 to effectively disable.
+    boilerplate_page_fraction: float = Field(default=0.5, gt=0.0, le=1.0)
+
     # --- Chunking ---------------------------------------------------------
     chunk_size: int = Field(default=512, gt=0)
     chunk_overlap: int = Field(default=64, ge=0)

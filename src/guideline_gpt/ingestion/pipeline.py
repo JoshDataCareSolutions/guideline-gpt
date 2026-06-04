@@ -77,7 +77,9 @@ def ingest(documents_dir: Path, settings: Settings) -> IngestionReport:
     started = time.perf_counter()
     log.info("ingest_start", documents_dir=str(documents_dir))
 
-    pages = list(load_pdfs(documents_dir))
+    pages = list(
+        load_pdfs(documents_dir, boilerplate_page_fraction=settings.boilerplate_page_fraction)
+    )
     chunks = chunk_pages(pages, settings)
     if not chunks:
         raise IngestionError(
