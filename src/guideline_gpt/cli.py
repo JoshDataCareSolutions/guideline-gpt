@@ -77,6 +77,12 @@ def serve(
             # `serve` works in non-interactive environments (Docker, CI).
             "--browser.gatherUsageStats",
             "false",
+            # Disable the source file watcher: we run the packaged app, not a
+            # live-edit dev loop, and the watcher introspects every imported
+            # module — including transformers' lazy vision modules, which noisily
+            # raise ModuleNotFoundError (torchvision) on each rerun.
+            "--server.fileWatcherType",
+            "none",
         ],
         check=True,
     )
